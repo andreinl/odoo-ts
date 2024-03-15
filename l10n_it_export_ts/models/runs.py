@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    OpenERP, Open Source Management Solution
@@ -19,8 +18,9 @@
 #
 ##############################################################################
 
-from odoo import models,fields,api
- 
+from odoo import models, fields, api
+
+
 class ExportRegistry(models.Model):
     _name = 'exportts.export.registry'
     _description = 'Esportazioni TS'

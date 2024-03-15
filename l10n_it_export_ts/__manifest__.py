@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    Luca Vercelli 2016. Released under GNU Affero General Public License.
@@ -7,17 +6,21 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################################################
-
-
+# noinspection PyStatementEffect
 
 {
     'name': 'Send Invoices to Sistema TS',
-    'version': '16.0.1.0.0',
+    'version': '16.0.1.0.0-alfa',
     'category': 'Accounting',
-    'description': "",
+    'description': "Send Invoices to Sistema TS",
     'author': 'Luca Vercelli',
-    'depends': ['base','account','l10n_it_fiscalcode'],
+    'depends': [
+        'base',
+        'account',
+        'l10n_it_fiscalcode'
+    ],
     'data': [
+        'security/ir.model.access.csv',
         'views/invoice_report.xml',
         'views/product_view.xml',
         'views/partner_view.xml',
@@ -30,8 +33,11 @@
     'installable': True,
     'auto_install': False,
     'application': True,
-	'license' : 'AGPL-3',
+    'license': 'AGPL-3',
     'external_dependencies': {
-        'python': ['Crypto', 'zeep', 'requests'],  #pip install pycryptho zeep requests
+        'python': [
+            'Crypto',
+            'zeep',
+            'requests'],  #pip install pycryptodome zeep requests
     }
 }

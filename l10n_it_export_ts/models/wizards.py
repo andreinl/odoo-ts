@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    OpenERP, Open Source Management Solution
@@ -19,32 +18,35 @@
 #
 ##############################################################################
 
-from odoo import models,fields,api
+from odoo import models, fields, api
 from odoo.exceptions import UserError
 
-#see /odoo/odoo-server/addons/product/models/product.py
+# see /odoo/odoo-server/addons/product/models/product.py
 
-import os
+# import os
 import logging
 
 from . import util
 
 _logger = logging.getLogger(__name__)
 
+# import ssl
+# ssl._create_default_https_context = ssl._create_unverified_context
+
+
 class WizardExportInvoices(models.TransientModel):
     _name = "exportts.wizard.export"
     _description = "Esporta fatture in XML"
 
-    proprietario_id = fields.Many2one('res.partner',string='Proprietario')
+    proprietario_id = fields.Many2one('res.partner', string='Proprietario')
 
-    #@api.multi
     def export(self):
         """
         I can export many invoices, neverthless I get a single Export object
         """
         now = fields.Datetime.now()
- 
-        invoices = self.env['account.invoice'].browse(self.env.context['active_ids'])
+
+        invoices = self.env['account.move'].browse(self.env.context['active_ids'])
         companies = [i.number for i in invoices if i.partner_id.is_company]
         oppositions = [i.number for i in invoices if i.partner_id.opposizione_730]
         messages = ""
@@ -52,34 +54,34 @@ class WizardExportInvoices(models.TransientModel):
             messages = messages + "Fatture ignorate perchè non intestate a persone fisiche: " + str(companies) + "\r\n"
         if oppositions:
             messages = messages + "Fatture con opposizione alla dichiarazione TS: " + str(oppositions) + "\r\n"
-        
+
         ctx = self.env.context
         values = {
-            'doc_ids' : ctx['active_ids'],
-            'doc_model' : ctx['active_model'],
-            'docs' : self.env[ctx['active_model']].browse(ctx['active_ids']),
-            'proprietario' : self.proprietario_id
+            'doc_ids': ctx['active_ids'],
+            'doc_model': ctx['active_model'],
+            'docs': self.env[ctx['active_model']].browse(ctx['active_ids']),
+            'proprietario': self.proprietario_id
         }
 
-        result = self.env['ir.actions.report'].render_template('l10n_it_export_ts.qweb_invoice_xml_ts', values)
+        result = self.env['ir.actions.report']._render_template('l10n_it_export_ts.qweb_invoice_xml_ts', values)
 
         self.env['exportts.export.registry'].create({
-            'proprietario_id' : self.proprietario_id.id,
-            'status' : 'Exported',
-            'xml' : result,
-            'date_export' : now,
+            'proprietario_id': self.proprietario_id.id,
+            'status': 'Exported',
+            'xml': result,
+            'date_export': now,
             'messages': messages
-            })
+        })
 
 
 # <<Il trattamento e la conservazione del codice fiscale dell'assistito,
-#rilevato dalla Tessera Sanitaria, crittografato secondo le
-#modalita' di cui al decreto attuativo del comma 5 dell'articolo 50
-#del DL 269/2003, utilizzando la chiave pubblica RSA contenuta
-#nel certificato X.509 fornito dal sistema TS ed applicando il
-#padding PKCS#1 v 1.5. Tale trattamento deve essere eseguito
-#tramite procedure automatizzate all'atto della memorizzazione
-#negli archivi locali.>>
+# rilevato dalla Tessera Sanitaria, crittografato secondo le
+# modalita' di cui al decreto attuativo del comma 5 dell'articolo 50
+# del DL 269/2003, utilizzando la chiave pubblica RSA contenuta
+# nel certificato X.509 fornito dal sistema TS ed applicando il
+# padding PKCS#1 v 1.5. Tale trattamento deve essere eseguito
+# tramite procedure automatizzate all'atto della memorizzazione
+# negli archivi locali.>>
 
 # i due indirizzi sono questi:
 # URL_TEST="https://invioss730ptest.sanita.finanze.it/InvioTelematicoSS730pMtomWeb/InvioTelematicoSS730pMtomPort"
@@ -88,6 +90,7 @@ class WizardExportInvoices(models.TransientModel):
 # quindi abbiamo i due file WSDL in locale:
 
 import os
+
 PARENT_FOLDER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FOLDER = os.path.join(PARENT_FOLDER, "data")
 
@@ -99,21 +102,29 @@ WSDL_DET_ERRORI = os.path.join(DATA_FOLDER, "DettaglioErrori730Service.wsdl")
 WSDL_RICEVUTE = os.path.join(DATA_FOLDER, "RicevutaPdf730Service.wsdl")
 
 
-
 class WizardSendToTS(models.TransientModel):
     _name = "exportts.wizard.send"
     _description = "Invia XML a Sistema TS"
 
     pincode_inviante = fields.Char('PINCODE inviante', required=True)
     password_inviante = fields.Char('Password', required=True)
-    endpoint = fields.Selection([('P','Produzione'),('T','Test')], required=True)
+    endpoint = fields.Selection([('P', 'Produzione'), ('T', 'Test')], required=True)
     folder = fields.Char('Backup Directory', help='Absolute path for storing files', required='True',
                          default='/odoo/backups/sistemats')
+    cf_proprietario = fields.Char('CF', store=False)
+    cf_proprietario_enc = fields.Char('Owner Enc', store=False)
+    p_iva = fields.Char('VAT', store=False)
+    pincode_inviante_enc = fields.Char('Pin Code', store=False)
+    xmlfilename = fields.Char('Temp XML Filename', store=False)
+    use_test_url = fields.Boolean('Test', store=False)
+    zipfilename = fields.Char('Zip Filename', store=False)
+    protocollo = fields.Char('Protocol', store=False)
 
-    #@api.one
     def send(self):
         if not os.path.exists(self.folder):
             raise UserError("Folder " + self.folder + " does not exist!")
+        # TODO: !!!!! This is wrong!!! active_id is the ID of the account_move
+        #  It has nothing to do with exportts.export.registry
         export = self.env['exportts.export.registry'].browse(self.env.context['active_id'])
         self.cf_proprietario = export.proprietario_id.fiscalcode
         self.cf_proprietario_enc = export.proprietario_id.fiscalcode_enc
@@ -122,16 +133,16 @@ class WizardSendToTS(models.TransientModel):
         self.xmlfilename = util.write_to_new_tempfile(export.xml, prefix='invoices', suffix='.xml')
         self.use_test_url = (self.endpoint == 'T')
 
-        #chdir because I need to find the schema file
+        # chdir because I need to find the schema file
         os.chdir(DATA_FOLDER)
         _logger.info("Now changed dir to %s", os.getcwd())
 
         _logger.info("Validating...")
-        
+
         util.test_xsd(self.xmlfilename, XSD_FILENAME)
         _logger.info("Compressione dati...")
         self.zipfilename = util.zip_single_file(self.xmlfilename)
-        
+
         _logger.info("Invio dati...")
         answer = self.call_ws_invio()
         export.status = "sent"
@@ -141,7 +152,7 @@ class WizardSendToTS(models.TransientModel):
 
         if answer.protocollo:
             self.protocollo = answer.protocollo
-            
+
             import time
             time.sleep(4)
             _logger.info("Esito invio:")
@@ -157,11 +168,11 @@ class WizardSendToTS(models.TransientModel):
                     export.status = "Accepted with warnings"
                 else:
                     export.status = "Some rejected"
-            
+
             answer3, pdf_filename = self.call_ws_ricevuta()
             _logger.info("Ricevuta PDF salvata in: %s", pdf_filename)
             export.pdf_filename = pdf_filename
-            
+
             answer4, csv_filename = self.call_ws_dettaglio_errori()
             _logger.info("Dettaglio errori CSV salvato in: %s", csv_filename)
             export.csv_filename = csv_filename
@@ -174,11 +185,12 @@ class WizardSendToTS(models.TransientModel):
         from requests import Session
         from requests.auth import HTTPBasicAuth
         from zeep.transports import Transport
-        
+
         session = Session()
+        session.verify = False
         session.auth = HTTPBasicAuth(self.cf_proprietario, self.password_inviante)
         return Transport(session=session)
-        
+
     def call_ws_invio(self):
         """
         Call the webservice "inviaFileMtom()".
@@ -189,24 +201,24 @@ class WizardSendToTS(models.TransientModel):
         @return webservice answer, which is an object of type "inviaFileMtomResponse"
         """
         from zeep import Client
-        
+
         wsdl = WSDL_TEST if self.use_test_url else WSDL_PROD
-        
+
         client = Client(wsdl=wsdl, transport=self._create_transport())
-        
+
         documento = open(self.zipfilename, "rb").read()
 
         return client.service.inviaFileMtom(
-                nomeFileAllegato = os.path.basename(self.zipfilename),
-                pincodeInvianteCifrato = self.pincode_inviante_enc,
-                datiProprietario = {
-                        'cfProprietario' : self.cf_proprietario    #cleartext
-                    },
-                documento = documento
-                )
+            nomeFileAllegato=os.path.basename(self.zipfilename),
+            pincodeInvianteCifrato=self.pincode_inviante_enc,
+            datiProprietario={
+                'cfProprietario': self.cf_proprietario  # cleartext
+            },
+            documento=documento
+        )
 
-    #Questa era una delle risposte:
-    #(ricevutaInvio){
+    # Questa era una delle risposte:
+    # (ricevutaInvio){
     #    codiceEsito = 000
     #    dataAccoglienza = 25-12-2016 22:24:20
     #    descrizioneEsito = Il file  in attesa di elaborazione, per conoscerne l'esito  necessario verificare la ricevuta
@@ -214,7 +226,7 @@ class WizardSendToTS(models.TransientModel):
     #    nomeFileAllegato = file1.xmlI4c52M.zip
     #    protocollo = 16122522242096203
     #    idErrore = 
-    #}
+    # }
 
     def call_ws_esito(self):
         """
@@ -226,17 +238,17 @@ class WizardSendToTS(models.TransientModel):
 
         client = Client(wsdl=WSDL_ESITO, transport=self._create_transport())
 
-        #alternativi al protocollo:
-        #DatiInputRichiesta.dataInizio = '24-12-2016'
-        #DatiInputRichiesta.dataFine = '26-12-2016'
+        # alternativi al protocollo:
+        # DatiInputRichiesta.dataInizio = '24-12-2016'
+        # DatiInputRichiesta.dataFine = '26-12-2016'
 
-        return client.service.EsitoInvii(DatiInputRichiesta = {
-                'pinCode' : self.pincode_inviante_enc,
-                'protocollo' : self.protocollo
-            })
+        return client.service.EsitoInvii(DatiInputRichiesta={
+            'pinCode': self.pincode_inviante_enc,
+            'protocollo': self.protocollo
+        })
 
-    #Questa era una delle risposte:
-    #(datiOutput){
+    # Questa era una delle risposte:
+    # (datiOutput){
     #    esitoChiamata = 0
     #    descrizioneEsito =  
     #    esitiPositivi = (esitiPositivi){
@@ -254,7 +266,7 @@ class WizardSendToTS(models.TransientModel):
     #                                           ]
     #                    }
     #    esitiNegativi = None (esitiNegativi)
-    #}
+    # }
 
     def call_ws_dettaglio_errori(self):
         """
@@ -266,22 +278,22 @@ class WizardSendToTS(models.TransientModel):
 
         client = Client(wsdl=WSDL_DET_ERRORI, transport=self._create_transport())
 
-        answer = client.service.DettaglioErrori(DatiInputRichiesta = {
-                'pinCode' : self.pincode_inviante_enc,
-                'protocollo' : self.protocollo
-            })
+        answer = client.service.DettaglioErrori(DatiInputRichiesta={
+            'pinCode': self.pincode_inviante_enc,
+            'protocollo': self.protocollo
+        })
         _logger.info(answer)
         csv_filename = None
         try:
             if answer.esitiPositivi.dettagliEsito.csv:
                 csv_filename = util.write_to_new_tempfile(answer.esitiPositivi.dettagliEsito.csv,
-                        prefix="errori", suffix=".csv.zip", dir=self.folder)
+                                                          prefix="errori", suffix=".csv.zip", dir=self.folder)
         except:
             pass
         return (answer, csv_filename)
 
-    #Questa era una delle risposte:
-    #(datiOutput){
+    # Questa era una delle risposte:
+    # (datiOutput){
     #    esitoChiamata = 1
     #    esitiPositivi = None (esitiPositivi)
     #    esitiNegativi = (esitiNegativi){
@@ -292,7 +304,7 @@ class WizardSendToTS(models.TransientModel):
     #                                                    }
     #                                                    ]
     #                    }
-    #}
+    # }
 
     def call_ws_ricevuta(self):
         """
@@ -304,27 +316,27 @@ class WizardSendToTS(models.TransientModel):
 
         client = Client(wsdl=WSDL_RICEVUTE, transport=self._create_transport())
 
-        answer = client.service.RicevutaPdf(DatiInputRichiesta = {
-                'pinCode' : self.pincode_inviante_enc,
-                'protocollo' : self.protocollo
-            })
+        answer = client.service.RicevutaPdf(DatiInputRichiesta={
+            'pinCode': self.pincode_inviante_enc,
+            'protocollo': self.protocollo
+        })
 
         _logger.info(answer)
         pdf_filename = None
         try:
             if answer.esitiPositivi and answer.esitiPositivi.dettagliEsito and answer.esitiPositivi.dettagliEsito.pdf:
                 pdf_filename = util.write_to_new_tempfile(answer.esitiPositivi.dettagliEsito.pdf,
-                                        prefix="ricevuta", suffix=".pdf", dir=self.folder)
+                                                          prefix="ricevuta", suffix=".pdf", dir=self.folder)
         except:
             pass
-        return (answer, pdf_filename)
+        return answer, pdf_filename
 
 
 class WizardEncryptAllFiscalCodes(models.TransientModel):
     _name = "res.partner.encrypt"
     _description = "Encrypt fiscal codes"
 
-    #@api.one
+    # @api.one
     def encrypt_all_fiscalcodes(self):
         """
         This encrypts all fiscalcode on demand.
@@ -336,4 +348,3 @@ class WizardEncryptAllFiscalCodes(models.TransientModel):
                 record.fiscalcode_enc = util.encrypt(record.fiscalcode)
             else:
                 record.fiscalcode_enc = None
-

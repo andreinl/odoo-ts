@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    OpenERP, Open Source Management Solution
@@ -19,10 +18,9 @@
 #
 ##############################################################################
 
-from odoo import models, fields, api
 from odoo import http
 from odoo.http import request
-from odoo.addons.web.controllers.main import content_disposition
+# from odoo.addons.web.controllers.main import content_disposition
 #from odoo.addons.web.controllers.main import serialize_exception
 from werkzeug.datastructures import Headers
 

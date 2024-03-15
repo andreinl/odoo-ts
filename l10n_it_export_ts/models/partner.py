@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #	OpenERP, Open Source Management Solution
@@ -19,52 +18,52 @@
 #
 ##############################################################################
 
-from odoo import models,fields,api
+from odoo import models, fields, api
 
-#see /usr/lib/python2.7/dist-packages/openerp/addons/account/partner.py
+# see /usr/lib/python2.7/dist-packages/openerp/addons/account/partner.py
+
 
 class res_partner(models.Model):
-	_inherit = 'res.partner'
+    _inherit = 'res.partner'
 
-	fiscalcode = fields.Char(inverse='_encrypt_fiscalcode_inverse')
-	fiscalcode_enc = fields.Char()
-	opposizione_730 = fields.Boolean("Opposizione alla dichiarazione 730")
+    fiscalcode = fields.Char(inverse='_encrypt_fiscalcode_inverse')
+    fiscalcode_enc = fields.Char()
+    opposizione_730 = fields.Boolean("Opposizione alla dichiarazione 730")
 
-	@api.depends('fiscalcode')	
-	def _encrypt_fiscalcode(self):
-		"""
-		This should encrypt fiscalcode "on the fly" during report export.
-		Bad choice.
-		"""
-		from . import util
-		for record in self:
-			if self.fiscalcode is None:
-				self.fiscalcode_enc = None
-			else:
-				record.fiscalcode_enc = util.encrypt(record.fiscalcode)
+    @api.depends('fiscalcode')
+    def _encrypt_fiscalcode(self):
+        """
+        This should encrypt fiscalcode "on the fly" during report export.
+        Bad choice.
+        """
+        from . import util
+        for record in self:
+            if self.fiscalcode is None:
+                self.fiscalcode_enc = None
+            else:
+                record.fiscalcode_enc = util.encrypt(record.fiscalcode)
 
-	def _encrypt_fiscalcode_inverse(self):
-		"""
-		This encrypts fiscalcode whenever it is changed and saved. 
-		"""
-		from . import util
-		for record in self:
-			if not record.fiscalcode:
-				record.fiscalcode_enc = None
-			else:
-				record.fiscalcode_enc = util.encrypt(record.fiscalcode)
+    def _encrypt_fiscalcode_inverse(self):
+        """
+        This encrypts fiscalcode whenever it is changed and saved.
+        """
+        from . import util
+        for record in self:
+            if not record.fiscalcode:
+                record.fiscalcode_enc = None
+            else:
+                record.fiscalcode_enc = util.encrypt(record.fiscalcode)
 
-	#@api.v8
-	def encrypt_all_fiscalcodes(self):
-		"""
-		This encrypts all fiscalcode on demand.
-		"""
-		from . import util
-		model = self.env['res.partner']
-		all_partners = model.search([])
-		for record in all_partners:
-			if record.fiscalcode:
-				record.fiscalcode_enc = util.encrypt(record.fiscalcode)
-			else:
-				record.fiscalcode_enc = None
-
+    # @api.v8
+    def encrypt_all_fiscalcodes(self):
+        """
+        This encrypts all fiscalcode on demand.
+        """
+        from . import util
+        model = self.env['res.partner']
+        all_partners = model.search([])
+        for record in all_partners:
+            if record.fiscalcode:
+                record.fiscalcode_enc = util.encrypt(record.fiscalcode)
+            else:
+                record.fiscalcode_enc = None

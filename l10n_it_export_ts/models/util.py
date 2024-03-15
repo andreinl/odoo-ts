@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    OpenERP, Open Source Management Solution
@@ -24,6 +23,7 @@ DIRNAME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PUBLIC_KEY_PEM_FILENAME = os.path.join(DIRNAME, "data", "SanitelCF.cer")
 PUBLIC_KEY = None
+
 
 def get_pubkey():
 	"""
@@ -53,6 +53,7 @@ def get_pubkey():
 		PUBLIC_KEY = RSA.importKey(subjectPublicKeyInfo)
 	return PUBLIC_KEY
 
+
 def encrypt(message):
 	"""
 	Encrypt emessage using given RSA public key, padding PKCS#1 v1.5, encoding base64
@@ -81,8 +82,9 @@ def encrypt(message):
 	cipher = PKCS1_v1_5.new(key)
 	msg_enc = cipher.encrypt(message)
 
-	return base64.encodestring(msg_enc).decode()
-	
+	return base64.encodebytes(msg_enc).decode()
+
+
 def write_to_new_tempfile(data, mode=None, prefix='', suffix='.tmp', dir=None, delete=False):
     """
     Create a new file, write 'data' into it, close it
@@ -96,6 +98,7 @@ def write_to_new_tempfile(data, mode=None, prefix='', suffix='.tmp', dir=None, d
     fd.write(data)
     fd.close()
     return fd.name
+
 
 def zip_single_file(orig_filename):
 	"""
@@ -112,6 +115,7 @@ def zip_single_file(orig_filename):
 	zf.close()
 	return zip_filename
 
+
 def test_xsd(xml_filename, xsd_filename):
 	"""
 	Test XML against XSD schema.
@@ -123,4 +127,3 @@ def test_xsd(xml_filename, xsd_filename):
 	doc = etree.parse(xml_filename)
 	#return xmlschema.validate(doc)
 	xmlschema.assertValid(doc)
-

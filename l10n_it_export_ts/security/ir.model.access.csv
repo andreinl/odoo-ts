@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+complete_exportts_wizard_export,exportts_wizard_export,model_exportts_wizard_export,base.group_user,1,1,1,1
+complete_exportts_export_registry,exportts_export_registry,model_exportts_export_registry,base.group_user,1,1,1,1
+l10n_it_export_ts.access_exportts_wizard_send,access_exportts_wizard_send,l10n_it_export_ts.model_exportts_wizard_send,base.group_user,1,1,1,1
+l10n_it_export_ts.access_res_partner_encrypt,access_res_partner_encrypt,l10n_it_export_ts.model_res_partner_encrypt,base.group_user,1,1,1,1

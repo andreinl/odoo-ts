@@ -23,7 +23,7 @@ from odoo import models, fields, api
 # see /usr/lib/python2.7/dist-packages/openerp/addons/account/partner.py
 
 
-class res_partner(models.Model):
+class ResPartner(models.Model):
     _inherit = 'res.partner'
 
     fiscalcode = fields.Char(inverse='_encrypt_fiscalcode_inverse')

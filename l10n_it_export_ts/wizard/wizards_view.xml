@@ -93,4 +93,17 @@
         parent="menu_sistema_ts"
         sequence="20"/>
 
+    <record id="document_message" model="ir.ui.view">
+        <field name="name">Document Message</field>
+        <field name="model">ts.dialog</field>
+        <field name="arch" type="xml">
+            <form>
+                <field name="message" readonly="True"/>
+                <footer>
+                    <button name="action_close" string="Ok" type="object" default_focus="1" class="oe_highlight"/>
+                </footer>
+            </form>
+        </field>
+  </record>
+
 </odoo>

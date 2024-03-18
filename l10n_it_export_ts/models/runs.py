@@ -36,8 +36,8 @@ class ExportRegistry(models.Model):
     messages = fields.Text('Messages', readonly=True)
     pdf_link = fields.Char('Download receipt', compute='_compute_pdf_link')
     csv_link = fields.Char('Download error details', compute='_compute_csv_link')
-    
-    #@api.multi
+    invoice_ids = fields.One2many(comodel_name="account.move", inverse_name="ts_export_id", string="Invoices")
+
     def _compute_name(self):
         for rec in self:
             rec.name = str(rec.date_export)

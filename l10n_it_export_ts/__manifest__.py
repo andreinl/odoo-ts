@@ -10,7 +10,7 @@
 
 {
     'name': 'Send Invoices to Sistema TS',
-    'version': '16.0.1.0.0-alfa',
+    'version': '16.0.1.0.0',
     'category': 'Accounting',
     'description': "Send Invoices to Sistema TS",
     'author': 'Luca Vercelli',
@@ -26,7 +26,7 @@
         'views/partner_view.xml',
         'views/runs_view.xml',
         'views/res_config_view.xml',
-        'views/wizards_view.xml',
+        'wizard/wizards_view.xml',
     ],
     'demo': [],
     'test': [],
@@ -38,6 +38,6 @@
         'python': [
             'Crypto',
             'zeep',
-            'requests'],  #pip install pycryptodome zeep requests
+            'requests'],  # pip install pycryptodome zeep requests
     }
 }

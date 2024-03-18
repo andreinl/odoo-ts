@@ -18,7 +18,7 @@
 #
 ##############################################################################
 
-from odoo import models, fields, api
+from odoo import models, fields, api, Command
 from odoo.exceptions import UserError
 
 # see /odoo/odoo-server/addons/product/models/product.py
@@ -26,12 +26,9 @@ from odoo.exceptions import UserError
 # import os
 import logging
 
-from . import util
+from odoo.addons.l10n_it_export_ts.models import util
 
 _logger = logging.getLogger(__name__)
-
-# import ssl
-# ssl._create_default_https_context = ssl._create_unverified_context
 
 
 class WizardExportInvoices(models.TransientModel):
@@ -47,31 +44,54 @@ class WizardExportInvoices(models.TransientModel):
         now = fields.Datetime.now()
 
         invoices = self.env['account.move'].browse(self.env.context['active_ids'])
-        companies = [i.number for i in invoices if i.partner_id.is_company]
-        oppositions = [i.number for i in invoices if i.partner_id.opposizione_730]
-        messages = ""
-        if companies:
-            messages = messages + "Fatture ignorate perchè non intestate a persone fisiche: " + str(companies) + "\r\n"
-        if oppositions:
-            messages = messages + "Fatture con opposizione alla dichiarazione TS: " + str(oppositions) + "\r\n"
 
-        ctx = self.env.context
-        values = {
-            'doc_ids': ctx['active_ids'],
-            'doc_model': ctx['active_model'],
-            'docs': self.env[ctx['active_model']].browse(ctx['active_ids']),
-            'proprietario': self.proprietario_id
-        }
+        invoices = invoices.filtered_domain([
+            ('ts_export_id', '=', False)
+        ])
 
-        result = self.env['ir.actions.report']._render_template('l10n_it_export_ts.qweb_invoice_xml_ts', values)
+        if invoices:
+            companies = [i.name for i in invoices if i.partner_id.is_company]
+            oppositions = [i.name for i in invoices if i.partner_id.opposizione_730]
+            messages = ""
+            if companies:
+                messages = messages + "Fatture ignorate perchè non intestate a persone fisiche: " + str(companies) + "\r\n"
+            if oppositions:
+                messages = messages + "Fatture con opposizione alla dichiarazione TS: " + str(oppositions) + "\r\n"
 
-        self.env['exportts.export.registry'].create({
-            'proprietario_id': self.proprietario_id.id,
-            'status': 'Exported',
-            'xml': result,
-            'date_export': now,
-            'messages': messages
-        })
+            ctx = self.env.context
+            values = {
+                'doc_ids': ctx['active_ids'],
+                'doc_model': ctx['active_model'],
+                'docs': self.env[ctx['active_model']].browse(ctx['active_ids']),
+                'proprietario': self.proprietario_id
+            }
+
+            result = self.env['ir.actions.report']._render_template('l10n_it_export_ts.qweb_invoice_xml_ts', values)
+
+            self.env['exportts.export.registry'].create({
+                'proprietario_id': self.proprietario_id.id,
+                'status': 'Exported',
+                'xml': result,
+                'date_export': now,
+                'messages': messages,
+                'invoice_ids': [Command.set(self.env.context['active_ids'])]
+            })
+
+            for invoice in invoices:
+                invoice.message_post(body=f"Documento pronto per la trasmissione al Sistema TS")
+
+        else:
+            message_id = self.env['ts.dialog'].create(
+                {'message': 'Documento/i già trasmesso/i al Sistema TS'}
+            )
+            return {
+                'name': 'Info',
+                'type': 'ir.actions.act_window',
+                'view_mode': 'form',
+                'res_model': 'ts.dialog',
+                'res_id': message_id.id,
+                'target': 'new'
+            }
 
 
 # <<Il trattamento e la conservazione del codice fiscale dell'assistito,
@@ -98,8 +118,11 @@ XSD_FILENAME = os.path.join(DATA_FOLDER, "730_precompilata.xsd")
 WSDL_PROD = os.path.join(DATA_FOLDER, "InvioTelematicoSpeseSanitarie730p.wsdl")
 WSDL_TEST = os.path.join(DATA_FOLDER, "InvioTelematicoSpeseSanitarie730pTest.wsdl")
 WSDL_ESITO = os.path.join(DATA_FOLDER, "EsitoInvioDatiSpesa730Service.wsdl")
+WSDL_ESITO_TEST = os.path.join(DATA_FOLDER, "EsitoInvioDatiSpesa730ServiceTest.wsdl")
 WSDL_DET_ERRORI = os.path.join(DATA_FOLDER, "DettaglioErrori730Service.wsdl")
+WSDL_DET_ERRORI_TEST = os.path.join(DATA_FOLDER, "DettaglioErrori730ServiceTest.wsdl")
 WSDL_RICEVUTE = os.path.join(DATA_FOLDER, "RicevutaPdf730Service.wsdl")
+WSDL_RICEVUTE_TEST = os.path.join(DATA_FOLDER, "RicevutaPdf730ServiceTest.wsdl")
 
 
 class WizardSendToTS(models.TransientModel):
@@ -123,59 +146,85 @@ class WizardSendToTS(models.TransientModel):
     def send(self):
         if not os.path.exists(self.folder):
             raise UserError("Folder " + self.folder + " does not exist!")
-        # TODO: !!!!! This is wrong!!! active_id is the ID of the account_move
-        #  It has nothing to do with exportts.export.registry
-        export = self.env['exportts.export.registry'].browse(self.env.context['active_id'])
-        self.cf_proprietario = export.proprietario_id.fiscalcode
-        self.cf_proprietario_enc = export.proprietario_id.fiscalcode_enc
-        self.p_iva = export.proprietario_id.vat
-        self.pincode_inviante_enc = util.encrypt(self.pincode_inviante)
-        self.xmlfilename = util.write_to_new_tempfile(export.xml, prefix='invoices', suffix='.xml')
-        self.use_test_url = (self.endpoint == 'T')
 
-        # chdir because I need to find the schema file
-        os.chdir(DATA_FOLDER)
-        _logger.info("Now changed dir to %s", os.getcwd())
+        invoices = self.env['account.move'].browse(self.env.context['active_ids'])
+        ready_to_be_sent_docs = invoices.ts_export_id.filtered_domain([('status', '=', 'Exported')])
+        if ready_to_be_sent_docs:
+            for export in ready_to_be_sent_docs:
+                self.cf_proprietario = export.proprietario_id.fiscalcode
+                self.cf_proprietario_enc = export.proprietario_id.fiscalcode_enc
+                self.p_iva = export.proprietario_id.vat
+                self.pincode_inviante_enc = util.encrypt(self.pincode_inviante)
+                self.xmlfilename = util.write_to_new_tempfile(export.xml, prefix='invoices', suffix='.xml')
+                self.use_test_url = (self.endpoint == 'T')
 
-        _logger.info("Validating...")
+                # chdir because I need to find the schema file
+                os.chdir(DATA_FOLDER)
+                _logger.info("Now changed dir to %s", os.getcwd())
 
-        util.test_xsd(self.xmlfilename, XSD_FILENAME)
-        _logger.info("Compressione dati...")
-        self.zipfilename = util.zip_single_file(self.xmlfilename)
+                _logger.info("Validating...")
 
-        _logger.info("Invio dati...")
-        answer = self.call_ws_invio()
-        export.status = "sent"
+                util.test_xsd(self.xmlfilename, XSD_FILENAME)
+                _logger.info("Compressione dati...")
+                self.zipfilename = util.zip_single_file(self.xmlfilename)
 
-        _logger.info("Invio concluso. Risposta:")
-        _logger.info(answer)
+                _logger.info("Invio dati...")
+                answer = self.call_ws_invio()
+                export.status = "sent"
 
-        if answer.protocollo:
-            self.protocollo = answer.protocollo
+                _logger.info("Invio concluso. Risposta:")
+                _logger.info(answer)
 
-            import time
-            time.sleep(4)
-            _logger.info("Esito invio:")
-            answer2 = self.call_ws_esito()
-            _logger.info(answer2)
-            if answer2.esitiPositivi and answer2.esitiPositivi.dettagliEsito:
-                dettagli = answer2.esitiPositivi.dettagliEsito[0]
-                if dettagli.nAccolti == 0:
-                    export.status = "Rejected"
-                elif dettagli.nInviati == dettagli.nAccolti:
-                    export.status = "Accepted"
-                elif dettagli.nWarnings > 0:
-                    export.status = "Accepted with warnings"
-                else:
-                    export.status = "Some rejected"
+                for invoice in export.invoice_ids:
+                    if answer.descrizioneEsito:
+                        invoice.message_post(body=answer.descrizioneEsito)
 
-            answer3, pdf_filename = self.call_ws_ricevuta()
-            _logger.info("Ricevuta PDF salvata in: %s", pdf_filename)
-            export.pdf_filename = pdf_filename
+                if answer.protocollo:
+                    self.protocollo = answer.protocollo
 
-            answer4, csv_filename = self.call_ws_dettaglio_errori()
-            _logger.info("Dettaglio errori CSV salvato in: %s", csv_filename)
-            export.csv_filename = csv_filename
+                    import time
+                    time.sleep(4)
+                    _logger.info("Esito invio:")
+                    answer2 = self.call_ws_esito()
+                    _logger.info(answer2)
+                    for invoice in export.invoice_ids:
+                        if answer2.esitiPositivi:
+                            invoice.message_post(body=answer2.esitiPositivi.dettagliEsito[0]['descrizione'])
+
+                    if answer2.esitiPositivi and answer2.esitiPositivi.dettagliEsito:
+                        dettagli = answer2.esitiPositivi.dettagliEsito[0]
+                        if dettagli.nAccolti == 0:
+                            export.status = "Rejected"
+                        elif dettagli.nInviati == dettagli.nAccolti:
+                            export.status = "Accepted"
+                        elif dettagli.nWarnings > 0:
+                            export.status = "Accepted with warnings"
+                        else:
+                            export.status = "Some rejected"
+
+                    answer3, pdf_filename = self.call_ws_ricevuta()
+                    _logger.info("Ricevuta PDF salvata in: %s", pdf_filename)
+
+                    for invoice in export.invoice_ids:
+                        invoice.message_post(body=f"PDF contenente dettaglio esito salvato in: {pdf_filename}")
+
+                    export.pdf_filename = pdf_filename
+
+                    answer4, csv_filename = self.call_ws_dettaglio_errori()
+                    _logger.info("Dettaglio errori CSV salvato in: %s", csv_filename)
+                    export.csv_filename = csv_filename
+        else:
+            message_id = self.env['ts.dialog'].create(
+                {'message': 'Non ci sono documenti da trasmettere'}
+            )
+            return {
+                'name': 'Info',
+                'type': 'ir.actions.act_window',
+                'view_mode': 'form',
+                'res_model': 'ts.dialog',
+                'res_id': message_id.id,
+                'target': 'new'
+            }
 
     def _create_transport(self):
         """
@@ -236,7 +285,8 @@ class WizardSendToTS(models.TransientModel):
         """
         from zeep import Client
 
-        client = Client(wsdl=WSDL_ESITO, transport=self._create_transport())
+        wsdl = WSDL_ESITO_TEST if self.use_test_url else WSDL_ESITO
+        client = Client(wsdl=wsdl, transport=self._create_transport())
 
         # alternativi al protocollo:
         # DatiInputRichiesta.dataInizio = '24-12-2016'
@@ -276,7 +326,8 @@ class WizardSendToTS(models.TransientModel):
         """
         from zeep import Client
 
-        client = Client(wsdl=WSDL_DET_ERRORI, transport=self._create_transport())
+        wsdl = WSDL_DET_ERRORI_TEST if self.use_test_url else WSDL_DET_ERRORI
+        client = Client(wsdl=wsdl, transport=self._create_transport())
 
         answer = client.service.DettaglioErrori(DatiInputRichiesta={
             'pinCode': self.pincode_inviante_enc,
@@ -314,7 +365,8 @@ class WizardSendToTS(models.TransientModel):
         """
         from zeep import Client
 
-        client = Client(wsdl=WSDL_RICEVUTE, transport=self._create_transport())
+        wsdl = WSDL_RICEVUTE_TEST if self.use_test_url else WSDL_RICEVUTE
+        client = Client(wsdl=wsdl, transport=self._create_transport())
 
         answer = client.service.RicevutaPdf(DatiInputRichiesta={
             'pinCode': self.pincode_inviante_enc,
@@ -348,3 +400,13 @@ class WizardEncryptAllFiscalCodes(models.TransientModel):
                 record.fiscalcode_enc = util.encrypt(record.fiscalcode)
             else:
                 record.fiscalcode_enc = None
+
+
+class TsDialog(models.TransientModel):
+    _name = 'ts.dialog'
+    _description = 'TS Dialog'
+
+    message = fields.Text(required=True)
+
+    def action_close(self):
+        return {'type': 'ir.actions.act_window_close'}

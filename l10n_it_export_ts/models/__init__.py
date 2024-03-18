@@ -1,1 +1,5 @@
-from . import partner, product, runs, res_config, wizards
+from . import account
+from . import partner
+from . import product
+from . import runs
+from . import res_config
